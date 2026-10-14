@@ -7,7 +7,7 @@
  * @noflow
  * @nolint
  * @preventMunge
- * @generated SignedSource<<33d8d1dffe478c4c12ad181a90d6c65b>>
+ * @generated SignedSource<<566db75930075a4f41eff3886f0507c0>>
  */
 
 "use strict";
@@ -690,7 +690,7 @@ __DEV__ &&
               ((didWarnAboutMessageChannel = !0),
               "undefined" === typeof MessageChannel &&
                 console.error(
-                  "This browser does not have a MessageChannel implementation, so enqueuing tasks via await act(async () => ...) will fail. Please file an issue at https://github.com/facebook/react/issues if you encounter this warning."
+                  "This browser does not have a MessageChannel implementation, so enqueuing tasks via await act(async () => ...) will fail. Please file an issue at https://github.com/react/react/issues if you encounter this warning."
                 ));
             var channel = new MessageChannel();
             channel.port1.onmessage = callback;
@@ -821,7 +821,7 @@ __DEV__ &&
       ],
       replaceState: [
         "replaceState",
-        "Refactor your code to use setState instead (see https://github.com/facebook/react/issues/3236)."
+        "Refactor your code to use setState instead (see https://github.com/react/react/issues/3236)."
       ]
     };
     for (fnName in deprecatedAPIs)
@@ -1479,7 +1479,7 @@ __DEV__ &&
     exports.useTransition = function () {
       return resolveDispatcher().useTransition();
     };
-    exports.version = "19.3.0-native-fb-b685b40d-20260724";
+    exports.version = "19.3.0-native-fb-07dde64d-20261013";
     "undefined" !== typeof __REACT_DEVTOOLS_GLOBAL_HOOK__ &&
       "function" ===
         typeof __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStop &&

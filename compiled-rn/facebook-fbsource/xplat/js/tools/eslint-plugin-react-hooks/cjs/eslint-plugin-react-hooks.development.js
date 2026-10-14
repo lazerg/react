@@ -12,7 +12,7 @@
  * @lightSyntaxTransform
  * @preventMunge
  * @oncall react_core
- * @generated SignedSource<<d72e88535b74ff9c22c978a7411a2818>>
+ * @generated SignedSource<<cc5283e2d500bd70c3393e9c97f2a39b>>
  */
 
 'use strict';
@@ -46,7 +46,7 @@ const rule$1 = {
         docs: {
             description: 'verifies the list of dependencies for Hooks like useEffect and similar',
             recommended: true,
-            url: 'https://github.com/facebook/react/issues/14920',
+            url: 'https://github.com/react/react/issues/14920',
         },
         fixable: 'code',
         hasSuggestions: true,
@@ -19407,12 +19407,14 @@ function printInstructionValue(instrValue) {
             value = `Debugger`;
             break;
         }
-        case 'PostfixUpdate': {
-            value = `PostfixUpdate ${printPlace(instrValue.lvalue)} = ${printPlace(instrValue.value)} ${instrValue.operation}`;
+        case 'PostfixUpdateLocal':
+        case 'PostfixUpdateContext': {
+            value = `${instrValue.kind} ${printPlace(instrValue.lvalue)} = ${printPlace(instrValue.value)} ${instrValue.operation}`;
             break;
         }
-        case 'PrefixUpdate': {
-            value = `PrefixUpdate ${printPlace(instrValue.lvalue)} = ${instrValue.operation} ${printPlace(instrValue.value)}`;
+        case 'PrefixUpdateLocal':
+        case 'PrefixUpdateContext': {
+            value = `${instrValue.kind} ${printPlace(instrValue.lvalue)} = ${instrValue.operation} ${printPlace(instrValue.value)}`;
             break;
         }
         case 'StartMemoize': {
@@ -19680,8 +19682,10 @@ function* eachInstructionLValueWithKind(instr) {
             }
             break;
         }
-        case 'PostfixUpdate':
-        case 'PrefixUpdate': {
+        case 'PostfixUpdateLocal':
+        case 'PostfixUpdateContext':
+        case 'PrefixUpdateContext':
+        case 'PrefixUpdateLocal': {
             yield [instr.value.lvalue, InstructionKind.Reassign];
             break;
         }
@@ -19700,8 +19704,10 @@ function* eachInstructionValueLValue(value) {
             yield* eachPatternOperand(value.lvalue.pattern);
             break;
         }
-        case 'PostfixUpdate':
-        case 'PrefixUpdate': {
+        case 'PostfixUpdateLocal':
+        case 'PostfixUpdateContext':
+        case 'PrefixUpdateContext':
+        case 'PrefixUpdateLocal': {
             yield value.lvalue;
             break;
         }
@@ -19871,8 +19877,10 @@ function* eachInstructionValueOperand(instrValue) {
             yield instrValue.value;
             break;
         }
-        case 'PostfixUpdate':
-        case 'PrefixUpdate': {
+        case 'PostfixUpdateLocal':
+        case 'PostfixUpdateContext':
+        case 'PrefixUpdateContext':
+        case 'PrefixUpdateLocal': {
             yield instrValue.value;
             break;
         }
@@ -20026,8 +20034,8 @@ function mapInstructionLValues(instr, fn) {
             mapPatternOperands(instr.value.lvalue.pattern, fn);
             break;
         }
-        case 'PostfixUpdate':
-        case 'PrefixUpdate': {
+        case 'PostfixUpdateLocal':
+        case 'PrefixUpdateLocal': {
             instr.value.lvalue = fn(instr.value.lvalue);
             break;
         }
@@ -20205,8 +20213,10 @@ function mapInstructionValueOperands(instrValue, fn) {
             instrValue.value = fn(instrValue.value);
             break;
         }
-        case 'PostfixUpdate':
-        case 'PrefixUpdate': {
+        case 'PostfixUpdateLocal':
+        case 'PostfixUpdateContext':
+        case 'PrefixUpdateContext':
+        case 'PrefixUpdateLocal': {
             instrValue.value = fn(instrValue.value);
             break;
         }
@@ -23865,7 +23875,7 @@ function lowerObjectPropertyKey(builder, property) {
     return null;
 }
 function lowerExpression(builder, exprPath) {
-    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _0, _1, _2, _3, _4, _5, _6, _7, _8, _9, _10, _11, _12, _13, _14, _15, _16, _17, _18, _19, _20, _21, _22, _23;
+    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _0, _1, _2, _3, _4, _5, _6, _7, _8, _9, _10, _11, _12, _13, _14, _15, _16, _17, _18, _19, _20, _21, _22;
     const exprNode = exprPath.node;
     const exprLoc = (_a = exprNode.loc) !== null && _a !== void 0 ? _a : GeneratedSource;
     switch (exprNode.type) {
@@ -24817,16 +24827,7 @@ function lowerExpression(builder, exprPath) {
                 }));
                 return { kind: 'UnsupportedNode', node: exprNode, loc: exprLoc };
             }
-            else if (builder.isContextIdentifier(argument)) {
-                builder.recordError(new CompilerErrorDetail({
-                    reason: `(BuildHIR::lowerExpression) Handle UpdateExpression to variables captured within lambdas.`,
-                    category: ErrorCategory.Todo,
-                    loc: (_18 = exprPath.node.loc) !== null && _18 !== void 0 ? _18 : null,
-                    suggestions: null,
-                }));
-                return { kind: 'UnsupportedNode', node: exprNode, loc: exprLoc };
-            }
-            const lvalue = lowerIdentifierForAssignment(builder, (_19 = argument.node.loc) !== null && _19 !== void 0 ? _19 : GeneratedSource, InstructionKind.Reassign, argument);
+            const lvalue = lowerIdentifierForAssignment(builder, (_18 = argument.node.loc) !== null && _18 !== void 0 ? _18 : GeneratedSource, InstructionKind.Reassign, argument);
             if (lvalue === null) {
                 if (!builder.environment.hasErrors()) {
                     builder.recordError(new CompilerErrorDetail({
@@ -24848,9 +24849,10 @@ function lowerExpression(builder, exprPath) {
                 return { kind: 'UnsupportedNode', node: exprNode, loc: exprLoc };
             }
             const value = lowerIdentifier(builder, argument);
+            const isContext = builder.isContextIdentifier(argument);
             if (expr.node.prefix) {
                 return {
-                    kind: 'PrefixUpdate',
+                    kind: isContext ? 'PrefixUpdateContext' : 'PrefixUpdateLocal',
                     lvalue,
                     operation: expr.node.operator,
                     value,
@@ -24859,7 +24861,7 @@ function lowerExpression(builder, exprPath) {
             }
             else {
                 return {
-                    kind: 'PostfixUpdate',
+                    kind: isContext ? 'PostfixUpdateContext' : 'PostfixUpdateLocal',
                     lvalue,
                     operation: expr.node.operator,
                     value,
@@ -24873,7 +24875,7 @@ function lowerExpression(builder, exprPath) {
                 kind: 'RegExpLiteral',
                 pattern: expr.node.pattern,
                 flags: expr.node.flags,
-                loc: (_20 = expr.node.loc) !== null && _20 !== void 0 ? _20 : GeneratedSource,
+                loc: (_19 = expr.node.loc) !== null && _19 !== void 0 ? _19 : GeneratedSource,
             };
         }
         case 'TSInstantiationExpression':
@@ -24889,13 +24891,13 @@ function lowerExpression(builder, exprPath) {
                     kind: 'MetaProperty',
                     meta: expr.node.meta.name,
                     property: expr.node.property.name,
-                    loc: (_21 = expr.node.loc) !== null && _21 !== void 0 ? _21 : GeneratedSource,
+                    loc: (_20 = expr.node.loc) !== null && _20 !== void 0 ? _20 : GeneratedSource,
                 };
             }
             builder.recordError(new CompilerErrorDetail({
                 reason: `(BuildHIR::lowerExpression) Handle MetaProperty expressions other than import.meta`,
                 category: ErrorCategory.Todo,
-                loc: (_22 = exprPath.node.loc) !== null && _22 !== void 0 ? _22 : null,
+                loc: (_21 = exprPath.node.loc) !== null && _21 !== void 0 ? _21 : null,
                 suggestions: null,
             }));
             return { kind: 'UnsupportedNode', node: exprNode, loc: exprLoc };
@@ -24904,7 +24906,7 @@ function lowerExpression(builder, exprPath) {
             builder.recordError(new CompilerErrorDetail({
                 reason: `(BuildHIR::lowerExpression) Handle ${exprPath.type} expressions`,
                 category: ErrorCategory.Todo,
-                loc: (_23 = exprPath.node.loc) !== null && _23 !== void 0 ? _23 : null,
+                loc: (_22 = exprPath.node.loc) !== null && _22 !== void 0 ? _22 : null,
                 suggestions: null,
             }));
             return { kind: 'UnsupportedNode', node: exprNode, loc: exprLoc };
@@ -25565,7 +25567,7 @@ function lowerValueToTemporary(builder, value) {
     return place;
 }
 function lowerIdentifier(builder, exprPath) {
-    var _a, _b;
+    var _a, _b, _c;
     const exprNode = exprPath.node;
     const exprLoc = (_a = exprNode.loc) !== null && _a !== void 0 ? _a : GeneratedSource;
     const binding = builder.resolveIdentifier(exprPath);
@@ -25587,6 +25589,15 @@ function lowerIdentifier(builder, exprPath) {
                     description: 'Eval is an anti-pattern in JavaScript, and the code executed cannot be evaluated by React Compiler',
                     category: ErrorCategory.UnsupportedSyntax,
                     loc: (_b = exprPath.node.loc) !== null && _b !== void 0 ? _b : null,
+                    suggestions: null,
+                }));
+            }
+            else if (binding.kind === 'Global' && binding.name === 'arguments') {
+                builder.recordError(new CompilerErrorDetail({
+                    reason: `Implicit 'arguments' is not supported`,
+                    description: 'React Compiler does not support compiling functions that reference the implicit arguments object',
+                    category: ErrorCategory.UnsupportedSyntax,
+                    loc: (_c = exprPath.node.loc) !== null && _c !== void 0 ? _c : null,
                     suggestions: null,
                 }));
             }
@@ -30242,7 +30253,7 @@ const TYPED_GLOBALS = [
     ],
     [
         'Date',
-        addObject(DEFAULT_SHAPES, 'Date', [
+        addFunction(DEFAULT_SHAPES, [
             [
                 'now',
                 addFunction(DEFAULT_SHAPES, [], {
@@ -30255,7 +30266,16 @@ const TYPED_GLOBALS = [
                     canonicalName: 'Date.now',
                 }),
             ],
-        ]),
+        ], {
+            positionalParams: [],
+            restParam: Effect.Read,
+            returnType: { kind: 'Poly' },
+            calleeEffect: Effect.Read,
+            returnValueKind: ValueKind.Mutable,
+            impure: true,
+            impureIfNoArgs: true,
+            canonicalName: 'Date',
+        }, 'Date'),
     ],
     [
         'Math',
@@ -32379,8 +32399,10 @@ function mayAllocate(_env, instruction) {
         case 'Destructure': {
             return doesPatternContainSpreadElement(value.lvalue.pattern);
         }
-        case 'PostfixUpdate':
-        case 'PrefixUpdate':
+        case 'PostfixUpdateLocal':
+        case 'PostfixUpdateContext':
+        case 'PrefixUpdateContext':
+        case 'PrefixUpdateLocal':
         case 'Await':
         case 'DeclareLocal':
         case 'DeclareContext':
@@ -33356,8 +33378,8 @@ function rewriteInstructionKindsBasedOnReassignment(fn) {
                     lvalue.kind = kind;
                     break;
                 }
-                case 'PostfixUpdate':
-                case 'PrefixUpdate': {
+                case 'PostfixUpdateLocal':
+                case 'PrefixUpdateLocal': {
                     const lvalue = value.lvalue;
                     const declaration = declarations.get(lvalue.identifier.declarationId);
                     CompilerError.invariant(declaration !== undefined, {
@@ -33366,6 +33388,14 @@ function rewriteInstructionKindsBasedOnReassignment(fn) {
                         loc: lvalue.loc,
                     });
                     declaration.kind = InstructionKind.Let;
+                    break;
+                }
+                case 'PostfixUpdateContext':
+                case 'PrefixUpdateContext': {
+                    const declaration = declarations.get(value.lvalue.identifier.declarationId);
+                    if (declaration !== undefined) {
+                        declaration.kind = InstructionKind.Let;
+                    }
                     break;
                 }
             }
@@ -33532,7 +33562,8 @@ function evaluateInstruction(constants, instr) {
             }
             return null;
         }
-        case 'PostfixUpdate': {
+        case 'PostfixUpdateLocal':
+        case 'PostfixUpdateContext': {
             const previous = read(constants, value.value);
             if (previous !== null &&
                 previous.kind === 'Primitive' &&
@@ -33547,7 +33578,8 @@ function evaluateInstruction(constants, instr) {
             }
             return null;
         }
-        case 'PrefixUpdate': {
+        case 'PrefixUpdateLocal':
+        case 'PrefixUpdateContext': {
             const previous = read(constants, value.value);
             if (previous !== null &&
                 previous.kind === 'Primitive' &&
@@ -34023,8 +34055,12 @@ function pruneableValue(value, state) {
                 return !isIdOrNameUsed;
             }
         }
-        case 'PostfixUpdate':
-        case 'PrefixUpdate': {
+        case 'PostfixUpdateContext':
+        case 'PrefixUpdateContext': {
+            return false;
+        }
+        case 'PostfixUpdateLocal':
+        case 'PrefixUpdateLocal': {
             return !state.isIdUsed(value.lvalue.identifier);
         }
         case 'Debugger': {
@@ -35903,8 +35939,10 @@ function mergeMacroArguments(fn, macroTags, macroKinds) {
                 case 'Destructure':
                 case 'LoadContext':
                 case 'LoadLocal':
-                case 'PostfixUpdate':
-                case 'PrefixUpdate':
+                case 'PostfixUpdateLocal':
+                case 'PostfixUpdateContext':
+                case 'PrefixUpdateContext':
+                case 'PrefixUpdateLocal':
                 case 'StoreContext':
                 case 'StoreLocal': {
                     break;
@@ -36977,7 +37015,8 @@ function codegenInstructionValue(cx, instrValue) {
                     switch (property.type) {
                         case 'property': {
                             const value = codegenPlaceToExpression(cx, property.place);
-                            properties.push(libExports$1.objectProperty(key, value, property.key.kind === 'computed', key.type === 'Identifier' &&
+                            properties.push(libExports$1.objectProperty(key, value, property.key.kind === 'computed', property.key.kind !== 'computed' &&
+                                key.type === 'Identifier' &&
                                 value.type === 'Identifier' &&
                                 value.name === key.name));
                             break;
@@ -37243,11 +37282,13 @@ function codegenInstructionValue(cx, instrValue) {
             value = codegenPlaceToExpression(cx, instrValue.value);
             break;
         }
-        case 'PostfixUpdate': {
+        case 'PostfixUpdateLocal':
+        case 'PostfixUpdateContext': {
             value = libExports$1.updateExpression(instrValue.operation, codegenPlaceToExpression(cx, instrValue.lvalue), false);
             break;
         }
-        case 'PrefixUpdate': {
+        case 'PrefixUpdateLocal':
+        case 'PrefixUpdateContext': {
             value = libExports$1.updateExpression(instrValue.operation, codegenPlaceToExpression(cx, instrValue.lvalue), true);
             break;
         }
@@ -37427,7 +37468,8 @@ function codegenLValue(cx, pattern) {
                 if (property.kind === 'ObjectProperty') {
                     const key = codegenObjectPropertyKey(cx, property.key);
                     const value = codegenLValue(cx, property.place);
-                    return libExports$1.objectProperty(key, value, property.key.kind === 'computed', key.type === 'Identifier' &&
+                    return libExports$1.objectProperty(key, value, property.key.kind === 'computed', property.key.kind !== 'computed' &&
+                        key.type === 'Identifier' &&
                         value.type === 'Identifier' &&
                         value.name === key.name);
                 }
@@ -38082,8 +38124,10 @@ class PromoteInterposedTemporaries extends ReactiveFunctionVisitor {
             case 'PropertyDelete':
             case 'ComputedStore':
             case 'ComputedDelete':
-            case 'PostfixUpdate':
-            case 'PrefixUpdate':
+            case 'PostfixUpdateLocal':
+            case 'PostfixUpdateContext':
+            case 'PrefixUpdateContext':
+            case 'PrefixUpdateLocal':
             case 'StoreLocal':
             case 'StoreContext':
             case 'StoreGlobal':
@@ -40128,8 +40172,8 @@ function computeSignatureForInstruction(context, env, instr) {
             effects.push({ kind: 'Assign', from: value.value, into: lvalue });
             break;
         }
-        case 'PostfixUpdate':
-        case 'PrefixUpdate': {
+        case 'PostfixUpdateLocal':
+        case 'PrefixUpdateLocal': {
             effects.push({
                 kind: 'Create',
                 into: lvalue,
@@ -40142,6 +40186,17 @@ function computeSignatureForInstruction(context, env, instr) {
                 value: ValueKind.Primitive,
                 reason: ValueReason.Other,
             });
+            break;
+        }
+        case 'PostfixUpdateContext':
+        case 'PrefixUpdateContext': {
+            effects.push({
+                kind: 'Create',
+                into: lvalue,
+                value: ValueKind.Primitive,
+                reason: ValueReason.Other,
+            });
+            effects.push({ kind: 'Mutate', value: value.lvalue });
             break;
         }
         case 'StoreGlobal': {
@@ -40227,7 +40282,9 @@ function computeEffectsForLegacySignature(state, signature, lvalue, receiver, ar
         value: signature.returnValueKind,
         reason: returnValueReason,
     });
-    if (signature.impure && state.env.config.validateNoImpureFunctionsInRender) {
+    if (signature.impure &&
+        state.env.config.validateNoImpureFunctionsInRender &&
+        (!signature.impureIfNoArgs || args.length === 0)) {
         effects.push({
             kind: 'Impure',
             place: receiver,
@@ -41074,8 +41131,10 @@ class CollectDependenciesVisitor extends ReactiveFunctionVisitor {
                     rvalues: [],
                 };
             }
-            case 'PrefixUpdate':
-            case 'PostfixUpdate': {
+            case 'PrefixUpdateLocal':
+            case 'PrefixUpdateContext':
+            case 'PostfixUpdateContext':
+            case 'PostfixUpdateLocal': {
                 const lvalues = [
                     { place: value.lvalue, level: MemoizationLevel.Conditional },
                 ];
@@ -43326,11 +43385,7 @@ function alignReactiveScopesToBlockScopesHIR(fn) {
     const activeScopes = new Set();
     const seen = new Set();
     const valueBlockNodes = new Map();
-    const placeScopes = new Map();
     function recordPlace(id, place, node) {
-        if (place.identifier.scope !== null) {
-            placeScopes.set(place, place.identifier.scope);
-        }
         const scope = getPlaceScope(id, place);
         if (scope == null) {
             return;
@@ -43796,8 +43851,10 @@ function* generateInstructionTypes(env, names, instr) {
             yield equation(left, { kind: 'Primitive' });
             break;
         }
-        case 'PostfixUpdate':
-        case 'PrefixUpdate': {
+        case 'PostfixUpdateLocal':
+        case 'PostfixUpdateContext':
+        case 'PrefixUpdateContext':
+        case 'PrefixUpdateLocal': {
             yield equation(value.value.identifier.type, { kind: 'Primitive' });
             yield equation(value.lvalue.identifier.type, { kind: 'Primitive' });
             yield equation(left, { kind: 'Primitive' });
@@ -44271,9 +44328,14 @@ function validateContextVariableLValuesImpl(fn, identifierKinds, env) {
                     visit(identifierKinds, value.place, 'local', env);
                     break;
                 }
-                case 'PostfixUpdate':
-                case 'PrefixUpdate': {
+                case 'PostfixUpdateLocal':
+                case 'PrefixUpdateLocal': {
                     visit(identifierKinds, value.lvalue, 'local', env);
+                    break;
+                }
+                case 'PostfixUpdateContext':
+                case 'PrefixUpdateContext': {
+                    visit(identifierKinds, value.lvalue, 'context', env);
                     break;
                 }
                 case 'Destructure': {
@@ -45282,7 +45344,7 @@ function validateNoRefAccessInRenderImpl(fn, env, errors) {
                         }
                         else {
                             for (const operand of eachInstructionValueOperand(instr.value)) {
-                                validateNoRefValueAccess(errors, env, operand);
+                                validateNoDirectRefValueAccess(errors, operand, env);
                             }
                         }
                         break;
@@ -46310,6 +46372,20 @@ function getContextReassignment(fn, contextVariables, isFunctionExpression, isAs
                     }
                     break;
                 }
+                case 'PostfixUpdateContext':
+                case 'PrefixUpdateContext': {
+                    if (isFunctionExpression) {
+                        if (contextVariables.has(value.lvalue.identifier.id) ||
+                            contextVariables.has(value.value.identifier.id)) {
+                            return value.lvalue;
+                        }
+                    }
+                    else {
+                        contextVariables.add(value.lvalue.identifier.id);
+                        contextVariables.add(value.value.identifier.id);
+                    }
+                    break;
+                }
                 default: {
                     let operands = eachInstructionValueOperand(value);
                     if (value.kind === 'CallExpression') {
@@ -46494,8 +46570,12 @@ function validateNoSetStateInEffects(fn, env) {
     return errors.asResult();
 }
 function getSetStateCall(fn, setStateFunctions, env) {
+    var _a;
     const enableAllowSetStateFromRefsInEffects = env.config.enableAllowSetStateFromRefsInEffects;
     const refDerivedValues = new Set();
+    const blocksAfterAwait = fn.async
+        ? computeBlocksStartingAfterAwait(fn)
+        : null;
     const isDerivedFromRef = (place) => {
         return (refDerivedValues.has(place.identifier.id) ||
             isUseRefType(place.identifier) ||
@@ -46530,6 +46610,7 @@ function getSetStateCall(fn, setStateFunctions, env) {
                 }
             }
         }
+        let isAfterAwait = (_a = blocksAfterAwait === null || blocksAfterAwait === void 0 ? void 0 : blocksAfterAwait.has(block.id)) !== null && _a !== void 0 ? _a : false;
         for (const instr of block.instructions) {
             if (enableAllowSetStateFromRefsInEffects) {
                 const hasRefOperand = Iterable_some(eachInstructionValueOperand(instr.value), isDerivedFromRef);
@@ -46573,6 +46654,10 @@ function getSetStateCall(fn, setStateFunctions, env) {
                 }
             }
             switch (instr.value.kind) {
+                case 'Await': {
+                    isAfterAwait = true;
+                    break;
+                }
                 case 'LoadLocal': {
                     if (setStateFunctions.has(instr.value.place.identifier.id)) {
                         setStateFunctions.set(instr.lvalue.identifier.id, instr.value.place);
@@ -46590,6 +46675,9 @@ function getSetStateCall(fn, setStateFunctions, env) {
                     const callee = instr.value.callee;
                     if (isSetStateType(callee.identifier) ||
                         setStateFunctions.has(callee.identifier.id)) {
+                        if (isAfterAwait) {
+                            break;
+                        }
                         if (enableAllowSetStateFromRefsInEffects) {
                             const arg = instr.value.args.at(0);
                             if (arg !== undefined &&
@@ -46608,6 +46696,45 @@ function getSetStateCall(fn, setStateFunctions, env) {
         }
     }
     return null;
+}
+function computeBlocksStartingAfterAwait(fn) {
+    const blocksWithAwait = new Set();
+    for (const [id, block] of fn.body.blocks) {
+        if (block.instructions.some(instr => instr.value.kind === 'Await')) {
+            blocksWithAwait.add(id);
+        }
+    }
+    const startsAfterAwait = new Map();
+    for (const [id] of fn.body.blocks) {
+        startsAfterAwait.set(id, id !== fn.body.entry);
+    }
+    let changed = true;
+    while (changed) {
+        changed = false;
+        for (const [id, block] of fn.body.blocks) {
+            if (id === fn.body.entry) {
+                continue;
+            }
+            let startAfterAwait = block.preds.size !== 0;
+            for (const pred of block.preds) {
+                if (startsAfterAwait.get(pred) !== true && !blocksWithAwait.has(pred)) {
+                    startAfterAwait = false;
+                    break;
+                }
+            }
+            if (startAfterAwait !== startsAfterAwait.get(id)) {
+                startsAfterAwait.set(id, startAfterAwait);
+                changed = true;
+            }
+        }
+    }
+    const result = new Set();
+    for (const [id, afterAwait] of startsAfterAwait) {
+        if (afterAwait) {
+            result.add(id);
+        }
+    }
+    return result;
 }
 
 function validateNoJSXInTryStatement(fn) {
@@ -46836,13 +46963,9 @@ function collectNonNullsInBlocks(fn, context) {
 }
 function propagateNonNull(fn, nodes, registry) {
     const blockSuccessors = new Map();
-    const terminalPreds = new Set();
     for (const [blockId, block] of fn.body.blocks) {
         for (const pred of block.preds) {
             getOrInsertDefault(blockSuccessors, pred, new Set()).add(blockId);
-        }
-        if (block.terminal.kind === 'throw' || block.terminal.kind === 'return') {
-            terminalPreds.add(blockId);
         }
     }
     function recursivelyPropagateNonNull(nodeId, direction, traversalState) {
@@ -47884,8 +48007,10 @@ function outlineJsxImpl(fn, outlinedFns) {
                 case 'NextPropertyOf':
                 case 'ObjectExpression':
                 case 'ObjectMethod':
-                case 'PostfixUpdate':
-                case 'PrefixUpdate':
+                case 'PostfixUpdateLocal':
+                case 'PostfixUpdateContext':
+                case 'PrefixUpdateContext':
+                case 'PrefixUpdateLocal':
                 case 'Primitive':
                 case 'PropertyDelete':
                 case 'PropertyLoad':
