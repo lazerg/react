@@ -55,6 +55,7 @@ var React = require("react"),
   REACT_TRACING_MARKER_TYPE = Symbol.for("react.tracing_marker"),
   REACT_MEMO_CACHE_SENTINEL = Symbol.for("react.memo_cache_sentinel"),
   REACT_VIEW_TRANSITION_TYPE = Symbol.for("react.view_transition"),
+  REACT_RECOVERABLE_TYPE = Symbol.for("react.recoverable"),
   MAYBE_ITERATOR_SYMBOL = Symbol.iterator;
 function getIteratorFn(maybeIterable) {
   if (null === maybeIterable || "object" !== typeof maybeIterable) return null;
@@ -3201,8 +3202,50 @@ var objectIs = "function" === typeof Object.is ? Object.is : is,
   actionStateCounter = 0,
   actionStateMatchingIndex = -1,
   thenableIndexCounter = 0,
-  thenableState = null,
-  renderPhaseUpdates = null,
+  thenableState = null;
+function createRecoverableError(recoverable) {
+  recoverable = recoverable._reason;
+  if ("function" === typeof recoverable)
+    try {
+      var initializedReason = recoverable();
+    } catch ($jscomp$unused$catch) {
+      initializedReason =
+        "The reason for browser-only rendering could not be determined because its initializer threw.";
+    }
+  else initializedReason = recoverable;
+  initializedReason = Error(
+    "Browser-only rendering was requested by `browser()`.",
+    void 0 === recoverable ? void 0 : { cause: initializedReason }
+  );
+  Object.defineProperty(initializedReason, REACT_RECOVERABLE_TYPE, {
+    value: !0
+  });
+  return initializedReason;
+}
+function isRecoverableError(error) {
+  return "object" !== typeof error || null === error
+    ? !1
+    : !0 === error[REACT_RECOVERABLE_TYPE];
+}
+function cloneRecoverableErrorAsFatal(recoverableError) {
+  var fatalRecoverableError = Error(
+    "The server render could not complete because client rendering was requested outside a Suspense boundary. See this error's cause for additional details.",
+    hasOwnProperty.call(recoverableError, "cause")
+      ? { cause: recoverableError.cause }
+      : void 0
+  );
+  recoverableError = recoverableError.stack;
+  if (void 0 !== recoverableError) {
+    var frameStart = recoverableError.indexOf("\n");
+    fatalRecoverableError.stack =
+      fatalRecoverableError.name +
+      ": " +
+      fatalRecoverableError.message +
+      (-1 === frameStart ? "" : recoverableError.slice(frameStart));
+  } else fatalRecoverableError.stack = void 0;
+  return fatalRecoverableError;
+}
+var renderPhaseUpdates = null,
   numberOfReRenders = 0;
 function resolveCurrentlyRenderingComponent() {
   if (null === currentlyRenderingComponent)
@@ -3415,6 +3458,8 @@ var HooksDispatcher = {
     use: function (usable) {
       if (null !== usable && "object" === typeof usable) {
         if ("function" === typeof usable.then) return unwrapThenable(usable);
+        if (usable.$$typeof === REACT_RECOVERABLE_TYPE)
+          throw createRecoverableError(usable);
         if (usable.$$typeof === REACT_CONTEXT_TYPE) return usable._currentValue;
       }
       throw Error("An unsupported type was passed to use(): " + String(usable));
@@ -3802,6 +3847,7 @@ function RequestInstance(
   rootFormatContext,
   progressiveChunkSize,
   onError,
+  onBrowserBailout,
   onAllReady,
   onShellReady,
   onShellError,
@@ -3830,10 +3876,12 @@ function RequestInstance(
   this.partialBoundaries = [];
   this.postponedState = this.trackedPostpones = null;
   this.onError = void 0 === onError ? defaultErrorHandler : onError;
+  this.onBrowserBailout = void 0 === onBrowserBailout ? noop : onBrowserBailout;
   this.onAllReady = void 0 === onAllReady ? noop : onAllReady;
   this.onShellReady = void 0 === onShellReady ? noop : onShellReady;
   this.onShellError = void 0 === onShellError ? noop : onShellError;
   this.onFatalError = void 0 === onFatalError ? noop : onFatalError;
+  this.renderLifetimeController = null;
   this.formState = void 0 === formState ? null : formState;
 }
 var currentRequest = null;
@@ -4043,22 +4091,26 @@ function getThrownInfo(node$jscomp$0) {
   return errorInfo;
 }
 function logRecoverableError(request, error, errorInfo) {
+  if (isRecoverableError(error))
+    return (request = request.onBrowserBailout), request(error, errorInfo), "";
   request = request.onError;
   error = request(error, errorInfo);
-  if (null == error || "string" === typeof error) return error;
+  if (null == error || "string" === typeof error)
+    return "" === error ? void 0 : error;
 }
 function fatalError(request, error) {
   var onShellError = request.onShellError,
     onFatalError = request.onFatalError;
   0 !== request.pendingRootTasks && onShellError(error);
   onFatalError(error);
+  endRenderLifetime(request);
   null !== request.destination
     ? ((request.status = 13),
       (request = request.destination),
       (request.done = !0),
       (request.fatal = !0),
       (request.error = error))
-    : ((request.status = 12), (request.fatalError = error));
+    : ((request.status = 12), request.aborted || (request.fatalError = error));
 }
 function finishSuspenseListRow(request, row) {
   unblockSuspenseListRow(request, row.next, row.hoistables);
@@ -5776,19 +5828,28 @@ function finishAbortedTask(task, request, error) {
     var boundary = task.blockedBoundary,
       segment = task.blockedSegment;
     if (null === segment || 3 === segment.status) {
-      var errorInfo = getThrownInfo(task.componentStack);
+      var errorInfo = getThrownInfo(task.componentStack),
+        isRecoverableReason = isRecoverableError(error);
       if (null === boundary) {
         boundary = task.replay;
         if (null === boundary) {
-          null !== request.trackedPostpones && null !== segment
-            ? ((boundary = request.trackedPostpones),
+          isRecoverableReason ||
+          null === request.trackedPostpones ||
+          null === segment
+            ? isRecoverableReason
+              ? ((task = cloneRecoverableErrorAsFatal(error)),
+                logRecoverableError(request, task, errorInfo),
+                12 !== request.status &&
+                  13 !== request.status &&
+                  fatalError(request, task))
+              : (logRecoverableError(request, error, errorInfo),
+                12 !== request.status &&
+                  13 !== request.status &&
+                  fatalError(request, error))
+            : ((boundary = request.trackedPostpones),
               logRecoverableError(request, error, errorInfo),
               trackPostpone(request, boundary, task, segment),
-              finishedTask(request, null, task.row, segment))
-            : (logRecoverableError(request, error, errorInfo),
-              12 !== request.status &&
-                13 !== request.status &&
-                fatalError(request, error));
+              finishedTask(request, null, task.row, segment));
           return;
         }
         12 !== request.status &&
@@ -5796,21 +5857,25 @@ function finishAbortedTask(task, request, error) {
           (boundary.pendingTasks--,
           0 === boundary.pendingTasks &&
             0 < boundary.nodes.length &&
-            ((segment = logRecoverableError(request, error, errorInfo)),
+            ((errorInfo = logRecoverableError(request, error, errorInfo)),
             abortRemainingReplayNodes(
               request,
               null,
               boundary.nodes,
               boundary.slots,
               error,
-              segment
+              errorInfo
             )),
           request.pendingRootTasks--,
           0 === request.pendingRootTasks && completeShell(request));
       } else {
         var trackedPostpones$65 = request.trackedPostpones;
         if (4 !== boundary.status) {
-          if (null !== trackedPostpones$65 && null !== segment)
+          if (
+            !isRecoverableReason &&
+            null !== trackedPostpones$65 &&
+            null !== segment
+          )
             return (
               logRecoverableError(request, error, errorInfo),
               trackPostpone(request, trackedPostpones$65, task, segment),
@@ -5821,18 +5886,17 @@ function finishAbortedTask(task, request, error) {
               finishedTask(request, boundary, task.row, segment)
             );
           boundary.status = 4;
-          segment = logRecoverableError(request, error, errorInfo);
-          boundary.status = 4;
-          boundary.errorDigest = segment;
+          errorInfo = logRecoverableError(request, error, errorInfo);
+          boundary.errorDigest = errorInfo;
           untrackBoundary(request, boundary);
           boundary.parentFlushed &&
             request.clientRenderedBoundaries.push(boundary);
         }
         boundary.pendingTasks--;
-        segment = boundary.row;
-        null !== segment &&
-          0 === --segment.pendingTasks &&
-          finishSuspenseListRow(request, segment);
+        errorInfo = boundary.row;
+        null !== errorInfo &&
+          0 === --errorInfo.pendingTasks &&
+          finishSuspenseListRow(request, errorInfo);
         boundary.fallbackAbortableTasks.forEach(function (fallbackTask) {
           return finishAbortedTask(fallbackTask, request, error);
         });
@@ -6160,7 +6224,7 @@ function flushSegment(request, destination, segment, hoistableState) {
     boundary = boundary.errorDigest;
     writeChunkAndReturn(destination, "\x3c!--$!--\x3e");
     writeChunk(destination, "<template");
-    boundary &&
+    null != boundary &&
       (writeChunk(destination, ' data-dgst="'),
       writeChunk(destination, escapeTextForBrowser(boundary)),
       writeChunk(destination, '"'));
@@ -6261,7 +6325,7 @@ function flushCompletedBoundary(request, destination, boundary) {
             ((completedSegments.instructions |= 4),
             writeChunk(
               destination,
-              '$RX=function(b,c,d,e,f){var a=document.getElementById(b);a&&(b=a.previousSibling,b.data="$!",a=a.dataset,c&&(a.dgst=c),d&&(a.msg=d),e&&(a.stck=e),f&&(a.cstck=f),b._reactRetry&&b._reactRetry())};'
+              '$RX=function(b,c,d,e,f){var a=document.getElementById(b);a&&(b=a.previousSibling,b.data="$!",a=a.dataset,null!=c&&(a.dgst=c),d&&(a.msg=d),e&&(a.stck=e),f&&(a.cstck=f),b._reactRetry&&b._reactRetry())};'
             )),
           0 === (completedSegments.instructions & 2) &&
             ((completedSegments.instructions |= 2),
@@ -6558,23 +6622,25 @@ function flushCompletedQueues(request, destination) {
             0 === (resumableState$jscomp$1.instructions & 4)
               ? ((resumableState$jscomp$1.instructions |= 4),
                 (renderState$jscomp$1.buffer +=
-                  '$RX=function(b,c,d,e,f){var a=document.getElementById(b);a&&(b=a.previousSibling,b.data="$!",a=a.dataset,c&&(a.dgst=c),d&&(a.msg=d),e&&(a.stck=e),f&&(a.cstck=f),b._reactRetry&&b._reactRetry())};;$RX("'))
+                  '$RX=function(b,c,d,e,f){var a=document.getElementById(b);a&&(b=a.previousSibling,b.data="$!",a=a.dataset,null!=c&&(a.dgst=c),d&&(a.msg=d),e&&(a.stck=e),f&&(a.cstck=f),b._reactRetry&&b._reactRetry())};;$RX("'))
               : (renderState$jscomp$1.buffer += '$RX("'))
           : (renderState$jscomp$1.buffer += '<template data-rxi="" data-bid="');
         renderState$jscomp$1.buffer += renderState$jscomp$2.boundaryPrefix;
         var chunk$jscomp$2 = id.toString(16);
         renderState$jscomp$1.buffer += chunk$jscomp$2;
         scriptFormat && (renderState$jscomp$1.buffer += '"');
-        if (errorDigest)
-          if (scriptFormat) {
-            renderState$jscomp$1.buffer += ",";
-            var chunk$jscomp$3 = escapeJSStringsForInstructionScripts(
-              errorDigest || ""
-            );
-            renderState$jscomp$1.buffer += chunk$jscomp$3;
-          } else {
+        if (null != errorDigest)
+          if (scriptFormat)
+            if (((renderState$jscomp$1.buffer += ","), null == errorDigest))
+              renderState$jscomp$1.buffer += "null";
+            else {
+              var chunk$jscomp$3 =
+                escapeJSStringsForInstructionScripts(errorDigest);
+              renderState$jscomp$1.buffer += chunk$jscomp$3;
+            }
+          else if (null != errorDigest) {
             renderState$jscomp$1.buffer += '" data-dgst="';
-            var chunk$jscomp$4 = escapeTextForBrowser(errorDigest || "");
+            var chunk$jscomp$4 = escapeTextForBrowser(errorDigest);
             renderState$jscomp$1.buffer += chunk$jscomp$4;
           }
         var JSCompiler_inline_result = scriptFormat
@@ -6674,6 +6740,7 @@ function flushCompletedQueues(request, destination) {
         (i = request.resumableState),
         i.hasBody && writeChunk(destination, endChunkForTag("body")),
         i.hasHtml && writeChunk(destination, endChunkForTag("html")),
+        endRenderLifetime(request),
         (request.status = 13),
         (destination.done = !0),
         (request.destination = null));
@@ -6703,27 +6770,38 @@ function finishAbort(request, abortableTasks) {
     }
     null !== request.destination &&
       flushCompletedQueues(request, request.destination);
-  } catch (error$73) {
-    logRecoverableError(request, error$73, {}), fatalError(request, error$73);
+  } catch (error$74) {
+    logRecoverableError(request, error$74, {}), fatalError(request, error$74);
   }
 }
+function endRenderLifetime(request) {
+  request = request.renderLifetimeController;
+  null !== request && request.abort("The render ended.");
+}
 function abort(request, reason) {
-  request.aborted ||
-    (11 !== request.status && 10 !== request.status) ||
-    ((request.aborted = !0),
-    (request.fatalError =
-      void 0 === reason
+  if (!(request.aborted || (11 !== request.status && 10 !== request.status))) {
+    endRenderLifetime(request);
+    var isRecoverableReason =
+      "object" === typeof reason &&
+      null !== reason &&
+      reason.$$typeof === REACT_RECOVERABLE_TYPE;
+    request.aborted = !0;
+    reason = isRecoverableReason
+      ? createRecoverableError(reason)
+      : void 0 === reason
         ? Error("The render was aborted by the server without a reason.")
         : "object" === typeof reason &&
             null !== reason &&
             "function" === typeof reason.then
           ? Error("The render was aborted by the server with a promise.")
-          : reason),
-    (reason = request.abortableTasks),
+          : reason;
+    request.fatalError = reason;
+    reason = request.abortableTasks;
     reason.forEach(function (task) {
       return abortTask(task, request);
-    }),
-    finishAbort(request, reason));
+    });
+    finishAbort(request, reason);
+  }
 }
 function addToReplayParent(node, parentKeyPath, trackedPostpones) {
   if (null === parentKeyPath) trackedPostpones.rootNodes.push(node);
@@ -6884,7 +6962,9 @@ exports.renderNextChunk = function (stream) {
               switchContext(task$jscomp$0.context);
               var childrenLength = segment$jscomp$0.children.length,
                 chunkLength = segment$jscomp$0.chunks.length,
-                startNode$jscomp$0 = task$jscomp$0.node;
+                startNode$jscomp$0 = task$jscomp$0.node,
+                startKeyPath = task$jscomp$0.keyPath,
+                startChildIndex = task$jscomp$0.childIndex;
               try {
                 retryNode(request, task$jscomp$0),
                   pushSegmentFinale(
@@ -6914,6 +6994,8 @@ exports.renderNextChunk = function (stream) {
                     (task$jscomp$0.thenableState =
                       getThenableStateAfterSuspending()),
                     (request.currentTask = prevTask$jscomp$0),
+                    (task$jscomp$0.keyPath = startKeyPath),
+                    (task$jscomp$0.childIndex = startChildIndex),
                     abortTask(task$jscomp$0, request),
                     task$jscomp$0.abortSet.delete(task$jscomp$0),
                     finishAbortedTask(
@@ -6958,14 +7040,29 @@ exports.renderNextChunk = function (stream) {
                     0 === --row.pendingTasks &&
                     finishSuspenseListRow(request, row);
                   request.allPendingTasks--;
-                  var errorDigest$jscomp$0 = logRecoverableError(
-                    request,
-                    x$jscomp$0,
-                    errorInfo$jscomp$0
-                  );
                   if (null === boundary$jscomp$0)
-                    fatalError(request, x$jscomp$0);
+                    if (isRecoverableError(x$jscomp$0)) {
+                      var fatalRecoverableError =
+                        cloneRecoverableErrorAsFatal(x$jscomp$0);
+                      logRecoverableError(
+                        request,
+                        fatalRecoverableError,
+                        errorInfo$jscomp$0
+                      );
+                      fatalError(request, fatalRecoverableError);
+                    } else
+                      logRecoverableError(
+                        request,
+                        x$jscomp$0,
+                        errorInfo$jscomp$0
+                      ),
+                        fatalError(request, x$jscomp$0);
                   else {
+                    var errorDigest$jscomp$0 = logRecoverableError(
+                      request,
+                      x$jscomp$0,
+                      errorInfo$jscomp$0
+                    );
                     boundary$jscomp$0.pendingTasks--;
                     if (4 !== boundary$jscomp$0.status) {
                       boundary$jscomp$0.status = 4;
@@ -7011,6 +7108,8 @@ exports.renderNextChunk = function (stream) {
   if (12 === request.status)
     (request.status = 13),
       (request = request.fatalError),
+      isRecoverableError(request) &&
+        (request = cloneRecoverableErrorAsFatal(request)),
       (stream.done = !0),
       (stream.fatal = !0),
       (stream.error = request);
@@ -7018,8 +7117,8 @@ exports.renderNextChunk = function (stream) {
     request.destination = stream;
     try {
       flushCompletedQueues(request, stream);
-    } catch (error) {
-      logRecoverableError(request, error, {}), fatalError(request, error);
+    } catch (error$73) {
+      logRecoverableError(request, error$73, {}), fatalError(request, error$73);
     }
   }
   if (stream.fatal) throw stream.error;
@@ -7238,6 +7337,7 @@ exports.renderToStream = function (children, options) {
     streamingFormat,
     options ? options.progressiveChunkSize : void 0,
     options.onError,
+    options.onBrowserBailout,
     void 0,
     void 0,
     void 0,
